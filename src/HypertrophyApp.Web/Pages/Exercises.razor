@@ -1,0 +1,19 @@
+@page "/exercises"
+@inject IDialogService Dialogs
+@inject AppState State
+
+<PageTitle>Exercises · HypertrophyApp</PageTitle>
+
+<div class="hero">
+    <MudText Typo="Typo.h4" Style="font-weight:800;">Exercise library</MudText>
+    <MudText Class="hero-sub mt-1">870+ exercises with form demos, target muscles and step-by-step instructions.</MudText>
+</div>
+
+<div class="card" style="height:auto;">
+    <ExerciseBrowser OnSelect="ex => ExerciseDialog.ShowAsync(Dialogs, ex.Id)" PageSize="36" />
+</div>
+
+@code {
+    // Loads the profile (for the header avatar) or sends first-time visitors to onboarding.
+    protected override Task OnInitializedAsync() => State.EnsureLoadedAsync();
+}

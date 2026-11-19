@@ -1,0 +1,22 @@
+# Local development database only. The credentials below are throw-away defaults for a container that is
+# bound to 127.0.0.1; override them with a .env file (see .env.example) and never reuse them in production.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: hypertrophyapp-postgres
+    environment:
+      POSTGRES_DB: hypertrophyapp
+      POSTGRES_USER: hypertrophyapp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hypertrophyapp_dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - hypertrophyapp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hypertrophyapp -d hypertrophyapp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  hypertrophyapp-pgdata:

@@ -1,0 +1,70 @@
+@* One dialog for both browsing and picking: list → detail → (optionally) "Add to workout". *@
+<MudDialog ContentClass="dialog-scroll">
+    <TitleContent>
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+            @if (_selectedId is not null && ExerciseId is null)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" OnClick="() => _selectedId = null" aria-label="Back to list" />
+            }
+            <MudText Typo="Typo.h6" Style="font-weight:800;">
+                @(_selectedId is null ? (PickMode ? "Add an exercise" : "Exercise library") : "Exercise")
+            </MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedId is null)
+        {
+            <ExerciseBrowser OnSelect="ex => _selectedId = ex.Id" AutoFocus />
+        }
+        else
+        {
+            <ExerciseDetail @ref="_detail" ExerciseId="@_selectedId" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => Dialog.Cancel()">Close</MudButton>
+        @if (PickMode && _selectedId is not null)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Pick">
+                Add to workout
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>When true, the dialog returns the chosen <see cref="ExerciseDetailDto"/>.</summary>
+    [Parameter] public bool PickMode { get; set; }
+
+    /// <summary>Open directly on one exercise's detail page.</summary>
+    [Parameter] public string? ExerciseId { get; set; }
+
+    private string? _selectedId;
+    private ExerciseDetail? _detail;
+
+    protected override void OnInitialized() => _selectedId = ExerciseId;
+
+    private void Pick()
+    {
+        if (_detail?.Exercise is { } exercise)
+            Dialog.Close(DialogResult.Ok(exercise));
+    }
+
+    /// <summary>Opens the library to pick an exercise; returns null when cancelled.</summary>
+    public static async Task<ExerciseDetailDto?> PickAsync(IDialogService dialogs)
+    {
+        var dialog = await dialogs.ShowAsync<ExerciseDialog>(null,
+            new DialogParameters { [nameof(PickMode)] = true },
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false, Data: ExerciseDetailDto picked } ? picked : null;
+    }
+
+    /// <summary>Shows how to perform one exercise.</summary>
+    public static Task ShowAsync(IDialogService dialogs, string exerciseId) =>
+        dialogs.ShowAsync<ExerciseDialog>(null,
+            new DialogParameters { [nameof(ExerciseId)] = exerciseId },
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+}

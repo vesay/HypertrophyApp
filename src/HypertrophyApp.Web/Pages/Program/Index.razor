@@ -1,0 +1,71 @@
+@page "/program"
+@inject AppState State
+
+<PageTitle>Program · HypertrophyApp</PageTitle>
+
+@if (State.Dashboard is not { } d)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else
+{
+    <div class="hero">
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.End" Wrap="Wrap.Wrap" Spacing="3">
+            <div>
+                <MudText Typo="Typo.h4" Style="font-weight:800;">@d.Split.Name</MudText>
+                <MudText Class="hero-sub mb-3">@d.Split.Description</MudText>
+                <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+                    <span class="chip-light">📅 @d.Profile.DaysPerWeek @(d.Profile.DaysPerWeek == 1 ? "day" : "days") / week</span>
+                    <span class="chip-light">💪 @d.Split.TimesPerWeekPerMuscle</span>
+                    <span class="chip-light">⭐ @d.Split.Level</span>
+                </MudStack>
+            </div>
+            <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+                <MudButton Href="/profile" Variant="Variant.Outlined" Style="color:#fff; border-color:rgba(255,255,255,.4);"
+                           StartIcon="@Icons.Material.Filled.SwapHoriz">Change program</MudButton>
+                <MudButton Href="/program/builder" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit">
+                    @(d.Profile.HasCustomProgram ? "Edit my workout" : "Create your own")
+                </MudButton>
+            </MudStack>
+        </MudStack>
+    </div>
+
+    <div class="card">
+        @foreach (var day in d.WeeklySchedule)
+        {
+            var isToday = day.DayOfWeek == DateTime.Today.DayOfWeek.ToString();
+            <div class="week-row" style="cursor:@(day.Workout is null ? "default" : "pointer");"
+                 @onclick="() => Toggle(day.DayOfWeek)">
+                <span class="week-day">@day.DayOfWeek</span>
+                <span class="@(day.Workout is null ? "rest" : "")" style="flex:1; font-weight:500;">
+                    @(day.Workout?.Title ?? "Rest")
+                    @if (isToday) { <span class="pill accent ml-2">Today</span> }
+                </span>
+                @if (day.Workout is not null)
+                {
+                    <span class="muted" style="font-size:.85rem;">@day.Workout.Exercises.Count exercises</span>
+                    <MudIcon Icon="@(_open.Contains(day.DayOfWeek) ? Icons.Material.Rounded.ExpandLess : Icons.Material.Rounded.ExpandMore)" Size="Size.Small" Class="muted" />
+                }
+            </div>
+            @if (day.Workout is not null && _open.Contains(day.DayOfWeek))
+            {
+                <div class="pb-3"><WorkoutTable Workout="day.Workout" /></div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private readonly HashSet<string> _open = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await State.EnsureLoadedAsync())
+            _open.Add(DateTime.Today.DayOfWeek.ToString());
+    }
+
+    private void Toggle(string day)
+    {
+        if (!_open.Remove(day)) _open.Add(day);
+    }
+}

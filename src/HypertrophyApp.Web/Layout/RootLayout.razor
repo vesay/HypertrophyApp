@@ -1,0 +1,29 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ThemeState ThemeState
+
+@* Theme + MudBlazor providers shared by every page (onboarding included). *@
+<MudThemeProvider @ref="_provider" Theme="ThemeState.Theme" IsDarkMode="ThemeState.IsDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider MaxWidth="MaxWidth.ExtraSmall" FullWidth="true" CloseOnEscapeKey="true" />
+<MudSnackbarProvider />
+
+<div class="@(ThemeState.IsDarkMode ? "theme-dark" : "theme-light")">
+    @Body
+</div>
+
+@code {
+    private MudThemeProvider _provider = default!;
+
+    protected override void OnInitialized() => ThemeState.Changed += OnThemeChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await ThemeState.InitializeAsync(() => _provider.GetSystemDarkModeAsync());
+    }
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ThemeState.Changed -= OnThemeChanged;
+}

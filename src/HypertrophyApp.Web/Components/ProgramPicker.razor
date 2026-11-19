@@ -1,0 +1,138 @@
+@inject HypertrophyAppApiClient Api
+
+@* Training days, split and goal – used by onboarding and the profile editor. *@
+<div class="stat-label mb-2">Training days per week</div>
+<MudToggleGroup T="int" Value="Model.DaysPerWeek" ValueChanged="OnDaysChangedAsync" Color="Color.Primary" Outlined Class="mb-6"
+                Disabled="@(Model.SplitId == CustomSplitId)">
+    @for (var d = 1; d <= 6; d++)
+    {
+        <MudToggleItem Value="d" Text="@(d == 1 ? "1 day" : $"{d} days")" />
+    }
+</MudToggleGroup>
+
+<div class="stat-label mb-2">Training split</div>
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-4" />
+}
+else
+{
+    <MudGrid Spacing="2" Class="mb-6">
+        @foreach (var split in _splits)
+        {
+            <MudItem xs="12" sm="6">
+                <div class="@CardClass(split.Id == Model.SplitId) pa-4" @onclick="() => SelectSplitAsync(split.Id)">
+                    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Style="font-weight:600;">@split.Name</MudText>
+                        @if (split.Id == Model.SplitId)
+                        {
+                            <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Primary" Size="Size.Small" />
+                        }
+                    </MudStack>
+                    <MudStack Row Spacing="1" Class="my-2" Wrap="Wrap.Wrap">
+                        @if (split.IsRecommended)
+                        {
+                            <span class="pill success">★ Recommended</span>
+                        }
+                        <span class="pill">@split.Level</span>
+                        <span class="pill">@split.TimesPerWeekPerMuscle</span>
+                    </MudStack>
+                    <MudText Typo="Typo.body2" Class="muted">@split.Description</MudText>
+                </div>
+            </MudItem>
+        }
+        @if (HasCustomProgram)
+        {
+            <MudItem xs="12" sm="6">
+                <div class="@CardClass(Model.SplitId == CustomSplitId) pa-4" @onclick="() => SelectSplitAsync(CustomSplitId)">
+                    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Style="font-weight:600;">My Program</MudText>
+                        @if (Model.SplitId == CustomSplitId)
+                        {
+                            <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Primary" Size="Size.Small" />
+                        }
+                    </MudStack>
+                    <MudStack Row Spacing="1" Class="my-2"><span class="pill accent">Custom</span></MudStack>
+                    <MudText Typo="Typo.body2" Class="muted">The workout plan you built yourself. Its days are set in the builder.</MudText>
+                </div>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<div class="stat-label mb-2">Goal</div>
+<MudGrid Spacing="2">
+    @foreach (var (goal, title, subtitle, icon) in Goals)
+    {
+        <MudItem xs="12" sm="4">
+            <div class="@CardClass(goal == Model.Goal) pa-4" @onclick="() => SelectGoalAsync(goal)">
+                <MudIcon Icon="@icon" Color="@(goal == Model.Goal ? Color.Primary : Color.Default)" />
+                <MudText Style="font-weight:600;" Class="mt-1">@title</MudText>
+                <MudText Typo="Typo.caption" Class="muted">@subtitle</MudText>
+            </div>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    public const string CustomSplitId = "custom";
+
+    private static readonly (Goal Goal, string Title, string Subtitle, string Icon)[] Goals =
+    [
+        (Goal.LoseFat, "Lose fat", "Calorie deficit, high protein", Icons.Material.Rounded.LocalFireDepartment),
+        (Goal.Maintain, "Stay fit", "Maintain weight, get stronger", Icons.Material.Rounded.Balance),
+        (Goal.BuildMuscle, "Build muscle", "Small surplus for growth", Icons.Material.Rounded.FitnessCenter),
+    ];
+
+    [Parameter, EditorRequired] public SaveProfileRequest Model { get; set; } = default!;
+    [Parameter] public bool HasCustomProgram { get; set; }
+
+    /// <summary>Raised after the picker changes the model, so the parent re-renders (e.g. to enable its submit button).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private IReadOnlyList<SplitSummaryDto> _splits = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSplitsAsync(preselect: string.IsNullOrEmpty(Model.SplitId));
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OnDaysChangedAsync(int days)
+    {
+        Model.DaysPerWeek = days;
+        await LoadSplitsAsync(preselect: true);
+        await OnChanged.InvokeAsync();
+    }
+
+    private Task SelectSplitAsync(string splitId)
+    {
+        Model.SplitId = splitId;
+        return OnChanged.InvokeAsync();
+    }
+
+    private Task SelectGoalAsync(Goal goal)
+    {
+        Model.Goal = goal;
+        return OnChanged.InvokeAsync();
+    }
+
+    private async Task LoadSplitsAsync(bool preselect)
+    {
+        _loading = true;
+        try
+        {
+            _splits = await Api.GetSplitsAsync(Model.DaysPerWeek);
+            // Pre-select the evidence-based recommendation for the chosen number of days.
+            if (preselect && Model.SplitId != CustomSplitId)
+                Model.SplitId = (_splits.FirstOrDefault(s => s.IsRecommended) ?? _splits.FirstOrDefault())?.Id ?? string.Empty;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string CardClass(bool selected) => selected ? "select-card selected" : "select-card";
+}

@@ -1,0 +1,154 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Single-series line chart in plain SVG: 2px line, 8px markers with a surface ring, recessive grid,
+   crosshair + tooltip on hover. Colors come from theme variables, so it works in light and dark mode.
+   The viewBox matches the real pixel width (via ResizeObserver), so text never scales with the screen. *@
+@if (Points.Count == 0)
+{
+    <MudText Class="muted py-8" Align="Align.Center">No data yet.</MudText>
+}
+else
+{
+    <div class="chart-wrap" @ref="_wrap" @onmouseleave="() => _hover = null">
+        <svg class="chart-svg" viewBox="0 0 @F(W) @H" role="img" aria-label="@AriaLabel">
+            @foreach (var tick in _ticks)
+            {
+                var y = Y(tick);
+                <line class="chart-grid" x1="@Pl" x2="@(W - Pr)" y1="@F(y)" y2="@F(y)" />
+                @SvgText(Pl - 8, y + 4, "end", tick.ToString("0.#"))
+            }
+
+            @foreach (var i in XLabelIndexes())
+            {
+                @SvgText(X(i), H - 6, "middle", Points[i].Date.ToString("MMM d"))
+            }
+
+            @if (Points.Count > 1)
+            {
+                <path class="chart-area" d="@AreaPath()" />
+                <path class="chart-line" d="@LinePath()" />
+            }
+
+            @if (_hover is { } h)
+            {
+                <line class="chart-crosshair" x1="@F(X(h))" x2="@F(X(h))" y1="@Pt" y2="@(H - Pb)" />
+            }
+
+            @for (var i = 0; i < Points.Count; i++)
+            {
+                <circle class="chart-dot" cx="@F(X(i))" cy="@F(Y(Points[i].Value))" r="@(_hover == i ? 6 : 4)" />
+            }
+
+            @* Hit targets: full-height columns, much bigger than the dots. *@
+            @for (var i = 0; i < Points.Count; i++)
+            {
+                var index = i;
+                var (left, right) = HitBounds(i);
+                <rect class="chart-hit" x="@F(left)" y="@Pt" width="@F(right - left)" height="@(H - Pt - Pb)"
+                      @onmouseenter="() => _hover = index" @onclick="() => _hover = index" />
+            }
+        </svg>
+
+        @if (_hover is { } hv)
+        {
+            <div class="chart-tooltip" style="left:@F(X(hv) / W * 100)%; top:@F(Y(Points[hv].Value) / H * 100)%;">
+                <div class="muted">@Points[hv].Date.ToString("ddd, MMM d yyyy")</div>
+                <div class="t-value">@Points[hv].Value.ToString("0.#") @Unit</div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    public sealed record Point(DateOnly Date, double Value);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Point> Points { get; set; } = [];
+    [Parameter] public string Unit { get; set; } = string.Empty;
+    [Parameter] public string AriaLabel { get; set; } = "Progress chart";
+
+    private const double H = 260, Pl = 44, Pr = 16, Pt = 16, Pb = 28;
+    private double W = 640; // replaced by the measured width after the first render
+    private ElementReference _wrap;
+    private DotNetObjectReference<LineChart>? _selfRef;
+    private bool _observing;
+    private double _min, _max;
+    private List<double> _ticks = [];
+    private int? _hover;
+
+    protected override void OnParametersSet()
+    {
+        _hover = null;
+        if (Points.Count == 0) return;
+
+        var lo = Points.Min(p => p.Value);
+        var hi = Points.Max(p => p.Value);
+        if (Math.Abs(hi - lo) < 1e-9) { lo -= 1; hi += 1; }
+
+        // "Nice" tick step so gridlines land on round numbers.
+        var raw = (hi - lo) / 4;
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+        var step = new[] { 1, 2, 2.5, 5, 10 }.Select(m => m * magnitude).First(s => s >= raw);
+        _min = Math.Floor(lo / step) * step;
+        _max = Math.Ceiling(hi / step) * step;
+        if (_min < 0 && lo >= 0) _min = 0;
+
+        _ticks = [];
+        for (var t = _min; t <= _max + step / 2; t += step) _ticks.Add(Math.Round(t, 6));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_observing || Points.Count == 0) return;
+        _observing = true;
+        _selfRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("hypertrophyapp.observeWidth", _wrap, _selfRef);
+    }
+
+    [JSInvokable]
+    public void OnResize(double width)
+    {
+        width = Math.Max(260, Math.Round(width));
+        if (Math.Abs(width - W) < 1) return;
+        W = width;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_observing)
+        {
+            try { await JS.InvokeVoidAsync("hypertrophyapp.unobserveWidth", _wrap); }
+            catch (JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+
+    private double X(int i) => Points.Count == 1 ? (Pl + W - Pr) / 2 : Pl + i * (W - Pl - Pr) / (Points.Count - 1);
+    private double Y(double v) => Pt + (1 - (v - _min) / (_max - _min)) * (H - Pt - Pb);
+
+    private (double Left, double Right) HitBounds(int i)
+    {
+        var left = i == 0 ? Pl : (X(i - 1) + X(i)) / 2;
+        var right = i == Points.Count - 1 ? W - Pr : (X(i) + X(i + 1)) / 2;
+        return (left, right);
+    }
+
+    private IEnumerable<int> XLabelIndexes()
+    {
+        if (Points.Count <= 4) return Enumerable.Range(0, Points.Count);
+        return new[] { 0, Points.Count / 3, 2 * Points.Count / 3, Points.Count - 1 }.Distinct();
+    }
+
+    private string LinePath() =>
+        "M" + string.Join(" L", Points.Select((p, i) => $"{F(X(i))},{F(Y(p.Value))}"));
+
+    private string AreaPath() =>
+        $"{LinePath()} L{F(X(Points.Count - 1))},{F(H - Pb)} L{F(X(0))},{F(H - Pb)} Z";
+
+    // Razor reserves <text>, so SVG text elements are emitted as (encoded) markup.
+    private static MarkupString SvgText(double x, double y, string anchor, string content) =>
+        new($"<text class=\"chart-axis-label\" x=\"{F(x)}\" y=\"{F(y)}\" text-anchor=\"{anchor}\">{System.Net.WebUtility.HtmlEncode(content)}</text>");
+
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

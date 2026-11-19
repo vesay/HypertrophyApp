@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HypertrophyApp</title>
+    <base href="/" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+
+<body>
+    <div id="app">
+        <div class="boot-screen">
+            <div class="boot-logo">HypertrophyApp</div>
+            <svg class="loading-progress">
+                <circle r="40%" cx="50%" cy="50%" />
+                <circle r="40%" cx="50%" cy="50%" />
+            </svg>
+            <div class="loading-progress-text"></div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">&#x2715;</span>
+    </div>
+    <script>
+        // Lets the SVG chart draw at its real pixel width, so axis text stays the same size on every screen.
+        window.hypertrophyapp = {
+            observeWidth: (el, dotnet) => {
+                const ro = new ResizeObserver(entries => dotnet.invokeMethodAsync('OnResize', entries[0].contentRect.width));
+                ro.observe(el);
+                el.__hypertrophyappObserver = ro;
+            },
+            unobserveWidth: el => el?.__hypertrophyappObserver?.disconnect()
+        };
+    </script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>

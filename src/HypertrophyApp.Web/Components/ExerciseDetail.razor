@@ -1,0 +1,57 @@
+@inject HypertrophyAppApiClient Api
+
+@* Full exercise card: big form demo, muscles, equipment and step-by-step instructions. *@
+@if (_exercise is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="6">
+            <ExerciseAnimation ImageUrls="_exercise.ImageUrls" Alt="@_exercise.Name" Fill />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.h5" Style="font-weight:800;" Class="mb-2">@_exercise.Name</MudText>
+            <MudStack Row Spacing="1" Wrap="Wrap.Wrap" Class="mb-3">
+                <span class="pill accent">@Cap(_exercise.Level)</span>
+                @if (_exercise.Equipment is { } eq) { <span class="pill">@Cap(eq)</span> }
+                @if (_exercise.Mechanic is { } m) { <span class="pill">@Cap(m)</span> }
+            </MudStack>
+            <div class="stat-label mb-1">Main muscles</div>
+            <MudText Class="mb-2" Style="font-weight:600;">@string.Join(", ", _exercise.PrimaryMuscles.Select(Cap))</MudText>
+            @if (_exercise.SecondaryMuscles.Count > 0)
+            {
+                <div class="stat-label mb-1">Also works</div>
+                <MudText Class="muted">@string.Join(", ", _exercise.SecondaryMuscles.Select(Cap))</MudText>
+            }
+        </MudItem>
+    </MudGrid>
+
+    <div class="stat-label mt-5 mb-2">How to do it</div>
+    <ol style="padding-left:20px; margin:0;">
+        @foreach (var step in _exercise.Instructions)
+        {
+            <li class="mb-2"><MudText Typo="Typo.body2">@step</MudText></li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired] public string ExerciseId { get; set; } = string.Empty;
+
+    private ExerciseDetailDto? _exercise;
+    private string? _loadedId;
+
+    public ExerciseDetailDto? Exercise => _exercise;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedId == ExerciseId) return;
+        _loadedId = ExerciseId;
+        _exercise = null;
+        _exercise = await Api.GetExerciseAsync(ExerciseId);
+    }
+
+    public static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+}

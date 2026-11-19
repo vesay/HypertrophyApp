@@ -1,0 +1,223 @@
+@page "/nutrition"
+@inject AppState State
+@inject HypertrophyAppApiClient Api
+@inject ISnackbar Snackbar
+
+<PageTitle>Nutrition · HypertrophyApp</PageTitle>
+
+<div class="hero">
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800;">Nutrition 🥗</MudText>
+            <MudText Class="hero-sub">Log what you eat and compare it with your daily targets.</MudText>
+        </div>
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="() => ChangeDayAsync(-1)" aria-label="Previous day" Style="color:#fff;" />
+            <span class="chip-light" style="min-width:130px; justify-content:center; font-size:.9rem;">@DayLabel</span>
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="() => ChangeDayAsync(1)" Style="color:#fff;"
+                           Disabled="@(_date >= AppState.Today)" aria-label="Next day" />
+        </MudStack>
+    </MudStack>
+</div>
+
+@if (State.Dashboard is not { } d)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else
+{
+    var n = d.Nutrition;
+    var eaten = _foods.Sum(f => f.Calories);
+
+    <MudGrid Spacing="3">
+        @* ---------- Summary ---------- *@
+        <MudItem xs="12" md="5">
+            <div class="card">
+                <div class="stat-label">Eaten</div>
+                <div class="big-number">@eaten.ToString("N0") <span class="stat-sub">/ @n.TargetCalories.ToString("N0") kcal</span></div>
+                <MudText Typo="Typo.body2" Class="muted mt-1 mb-4">
+                    @(eaten <= n.TargetCalories ? $"{n.TargetCalories - eaten:N0} kcal left" : $"{eaten - n.TargetCalories:N0} kcal over target")
+                </MudText>
+                <MacroBar Label="Calories" Value="eaten" Target="n.TargetCalories" Unit="kcal" />
+                <MacroBar Label="Protein" Value="_foods.Sum(f => f.ProteinGrams ?? 0)" Target="n.ProteinGrams" />
+                <MacroBar Label="Carbs" Value="_foods.Sum(f => f.CarbGrams ?? 0)" Target="n.CarbGrams" />
+                <MacroBar Label="Fat" Value="_foods.Sum(f => f.FatGrams ?? 0)" Target="n.FatGrams" />
+                <MudText Typo="Typo.caption" Class="muted">
+                    Targets: BMR @n.Bmr.ToString("N0") · maintenance @n.Tdee.ToString("N0") kcal · water @n.WaterLiters.ToString("0.0") L
+                </MudText>
+            </div>
+        </MudItem>
+
+        @* ---------- Add food ---------- *@
+        <MudItem xs="12" md="7">
+            <div class="card">
+                <MudText Class="card-title mb-3">Add food</MudText>
+                <EditForm Model="_form" OnValidSubmit="AddAsync">
+                    <DataAnnotationsValidator />
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="8">
+                            <MudTextField @bind-Value="_form.Name" For="@(() => _form.Name)" Label="Food" Placeholder="e.g. Chicken & rice"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="Meal" @bind-Value="_form.Meal" Label="Meal" Variant="Variant.Outlined" Margin="Margin.Dense" Dense>
+                                @foreach (var m in AllMeals)
+                                {
+                                    <MudSelectItem Value="m">@m</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudNumericField @bind-Value="_form.Calories" For="@(() => _form.Calories)" Label="Calories" Variant="Variant.Outlined"
+                                             Margin="Margin.Dense" Min="0" Max="10000" HideSpinButtons AdornmentText="kcal" Adornment="Adornment.End" />
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudNumericField @bind-Value="_form.ProteinGrams" For="@(() => _form.ProteinGrams)" Label="Protein" Variant="Variant.Outlined"
+                                             Margin="Margin.Dense" Min="0m" Max="1000m" HideSpinButtons AdornmentText="g" Adornment="Adornment.End" />
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudNumericField @bind-Value="_form.CarbGrams" For="@(() => _form.CarbGrams)" Label="Carbs" Variant="Variant.Outlined"
+                                             Margin="Margin.Dense" Min="0m" Max="1000m" HideSpinButtons AdornmentText="g" Adornment="Adornment.End" />
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudNumericField @bind-Value="_form.FatGrams" For="@(() => _form.FatGrams)" Label="Fat" Variant="Variant.Outlined"
+                                             Margin="Margin.Dense" Min="0m" Max="1000m" HideSpinButtons AdornmentText="g" Adornment="Adornment.End" />
+                        </MudItem>
+                    </MudGrid>
+                    @if (_error is not null)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense Class="mt-3">@_error</MudAlert>
+                    }
+                    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-3">
+                        <MudText Typo="Typo.caption" Class="muted">Macros are optional.</MudText>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" DropShadow="false"
+                                   StartIcon="@Icons.Material.Rounded.Add" Disabled="_saving">Add</MudButton>
+                    </MudStack>
+                </EditForm>
+            </div>
+        </MudItem>
+
+        @* ---------- Food diary ---------- *@
+        <MudItem xs="12" md="7">
+            <div class="card">
+                <MudText Class="card-title mb-2">Food diary</MudText>
+                @if (_foods.Count == 0)
+                {
+                    <MudText Class="muted py-6" Align="Align.Center">Nothing logged for this day yet.</MudText>
+                }
+                @foreach (var group in _foods.GroupBy(f => f.Meal).OrderBy(g => g.Key))
+                {
+                    <MudStack Row Justify="Justify.SpaceBetween" Class="mt-3 mb-1">
+                        <span class="stat-label">@group.Key</span>
+                        <span class="stat-label">@group.Sum(f => f.Calories).ToString("N0") kcal</span>
+                    </MudStack>
+                    @foreach (var f in group)
+                    {
+                        <div class="food-row">
+                            <div style="flex:1;">
+                                <div style="font-weight:500;">@f.Name</div>
+                                <div class="stat-sub">@MacroText(f)</div>
+                            </div>
+                            <span style="font-weight:600;">@f.Calories kcal</span>
+                            <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="Delete"
+                                           OnClick="() => DeleteAsync(f)" />
+                        </div>
+                    }
+                }
+            </div>
+        </MudItem>
+
+        @* ---------- Suggestions ---------- *@
+        <MudItem xs="12" md="5">
+            <div class="card">
+                <MudText Class="card-title mb-2">Sample meal plan</MudText>
+                <MudText Typo="Typo.caption" Class="muted">Ideas that fit your @n.TargetCalories.ToString("N0") kcal target.</MudText>
+                @foreach (var meal in n.Meals)
+                {
+                    <div class="food-row" style="align-items:flex-start;">
+                        <div style="flex:1;">
+                            <div style="font-weight:500;">@meal.Name</div>
+                            <div class="stat-sub">@string.Join(" · ", meal.Foods)</div>
+                        </div>
+                        <span class="pill">~@meal.Calories kcal</span>
+                    </div>
+                }
+            </div>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private static readonly Meal[] AllMeals = Enum.GetValues<Meal>();
+
+    private DateOnly _date = AppState.Today;
+    private IReadOnlyList<FoodEntryDto> _foods = [];
+    private AddFoodEntryRequest _form = new();
+    private bool _saving;
+    private string? _error;
+
+    private string DayLabel =>
+        _date == AppState.Today ? "Today" :
+        _date == AppState.Today.AddDays(-1) ? "Yesterday" : _date.ToString("ddd, MMM d");
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await State.EnsureLoadedAsync()) return;
+        _form.Meal = DefaultMeal();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _foods = await Api.GetFoodsAsync(State.ProfileId, _date);
+
+    private async Task ChangeDayAsync(int delta)
+    {
+        _date = _date.AddDays(delta);
+        if (_date > AppState.Today) _date = AppState.Today;
+        await LoadAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        _saving = true;
+        _error = null;
+        _form.Date = _date;
+
+        var result = await Api.AddFoodAsync(State.ProfileId, _form);
+        _saving = false;
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Snackbar.Add($"{result.Value!.Name} added.", Severity.Success);
+        _form = new AddFoodEntryRequest { Meal = _form.Meal };
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(FoodEntryDto entry)
+    {
+        await Api.DeleteFoodAsync(State.ProfileId, entry.Id);
+        await LoadAsync();
+    }
+
+    private static string MacroText(FoodEntryDto f)
+    {
+        var parts = new List<string>();
+        if (f.ProteinGrams is { } p) parts.Add($"P {p:0.#} g");
+        if (f.CarbGrams is { } c) parts.Add($"C {c:0.#} g");
+        if (f.FatGrams is { } fat) parts.Add($"F {fat:0.#} g");
+        return parts.Count == 0 ? "No macros" : string.Join(" · ", parts);
+    }
+
+    /// <summary>Guess the meal from the time of day so adding food takes one less click.</summary>
+    private static Meal DefaultMeal()
+    {
+        // (Written without "< n =>" switch arms: Razor reads a line starting with '<' as markup.)
+        var hour = DateTime.Now.Hour;
+        if (hour >= 18) return Meal.Dinner;
+        if (hour >= 15) return Meal.Snack;
+        return hour >= 11 ? Meal.Lunch : Meal.Breakfast;
+    }
+}

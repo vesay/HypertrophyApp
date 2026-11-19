@@ -1,0 +1,20 @@
+@* Progress of a consumed amount against its daily target. *@
+<div class="mb-3">
+    <MudStack Row Justify="Justify.SpaceBetween">
+        <MudText Typo="Typo.body2" Style="font-weight:500;">@Label</MudText>
+        <MudText Typo="Typo.body2">
+            <b>@Value.ToString("N0")</b><span class="muted"> / @Target.ToString("N0") @Unit</span>
+        </MudText>
+    </MudStack>
+    <MudProgressLinear Value="@Percent" Color="@(Value > Target * 1.05m ? Color.Warning : Color)" Rounded Size="Size.Small" Class="mt-1" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public decimal Value { get; set; }
+    [Parameter, EditorRequired] public decimal Target { get; set; }
+    [Parameter] public string Unit { get; set; } = "g";
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+
+    private double Percent => Target <= 0 ? 0 : (double)Math.Min(100, Value * 100 / Target);
+}

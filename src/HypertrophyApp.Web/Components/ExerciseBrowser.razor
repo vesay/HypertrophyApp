@@ -1,0 +1,105 @@
+@inject HypertrophyAppApiClient Api
+@implements IDisposable
+
+@* Search + filter the exercise library and show results as animated cards. *@
+<MudGrid Spacing="2" Class="mb-3">
+    <MudItem xs="12" sm="6">
+        <MudTextField T="string" Value="_query" ValueChanged="OnQueryChanged" Immediate="true" Placeholder="Search 870+ exercises, e.g. squat, curl…"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" Clearable AutoFocus="AutoFocus" />
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudSelect T="string" Value="_muscle" ValueChanged="OnMuscleChanged" Label="Muscle" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Dense Clearable>
+            @foreach (var m in _filters.Muscles)
+            {
+                <MudSelectItem Value="@m">@ExerciseDetail.Cap(m)</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudSelect T="string" Value="_equipment" ValueChanged="OnEquipmentChanged" Label="Equipment" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Dense Clearable>
+            @foreach (var e in _filters.Equipment)
+            {
+                <MudSelectItem Value="@e">@ExerciseDetail.Cap(e)</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+</MudGrid>
+
+<MudText Typo="Typo.caption" Class="muted mb-2 d-block">@(_loading ? "Searching…" : $"{_total} exercises")</MudText>
+
+<div class="ex-grid">
+    @foreach (var ex in _items)
+    {
+        <div class="ex-card" @onclick="() => OnSelect.InvokeAsync(ex)" title="@ex.Name">
+            <ExerciseAnimation ImageUrls="ex.ImageUrls" Alt="@ex.Name" Fill />
+            <div class="ex-card-body">
+                <div class="ex-card-name">@ex.Name</div>
+                <div class="stat-sub mt-1">@string.Join(", ", ex.PrimaryMuscles.Select(ExerciseDetail.Cap))</div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_items.Count < _total)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="mt-4">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadMoreAsync" Disabled="_loading">Show more</MudButton>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public EventCallback<ExerciseSummaryDto> OnSelect { get; set; }
+    [Parameter] public bool AutoFocus { get; set; }
+    [Parameter] public int PageSize { get; set; } = 24;
+
+    private ExerciseFiltersDto _filters = new([], []);
+    private List<ExerciseSummaryDto> _items = [];
+    private int _total;
+    private string? _query, _muscle, _equipment;
+    private bool _loading;
+    private CancellationTokenSource? _debounce;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var filters = Api.GetExerciseFiltersAsync();
+        await SearchAsync();
+        _filters = await filters;
+    }
+
+    private async Task OnQueryChanged(string? value)
+    {
+        _query = value;
+        // Debounce typing so we don't query on every keystroke.
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try { await Task.Delay(250, _debounce.Token); }
+        catch (TaskCanceledException) { return; }
+        await SearchAsync();
+    }
+
+    private Task OnMuscleChanged(string? value) { _muscle = value; return SearchAsync(); }
+    private Task OnEquipmentChanged(string? value) { _equipment = value; return SearchAsync(); }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        var result = await Api.SearchExercisesAsync(_query, _muscle, _equipment, 0, PageSize);
+        _items = result.Items.ToList();
+        _total = result.Total;
+        _loading = false;
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loading = true;
+        var result = await Api.SearchExercisesAsync(_query, _muscle, _equipment, _items.Count, PageSize);
+        _items.AddRange(result.Items);
+        _total = result.Total;
+        _loading = false;
+    }
+
+    public void Dispose() => _debounce?.Cancel();
+}

@@ -1,0 +1,31 @@
+@* Name, sex, age, height, weight – used by onboarding and the profile editor (must sit inside an EditForm). *@
+<MudGrid Spacing="3">
+    <MudItem xs="12">
+        <MudTextField @bind-Value="Model.Name" For="@(() => Model.Name)" Label="Name or nickname"
+                      Variant="Variant.Outlined" MaxLength="50" AutoFocus="AutoFocus" />
+    </MudItem>
+    <MudItem xs="12">
+        <div class="stat-label mb-1">Sex</div>
+        <MudToggleGroup T="Sex?" @bind-Value="Model.Sex" Color="Color.Primary" Outlined Style="max-width:320px;">
+            <MudToggleItem Value="@((Sex?)Sex.Male)" Text="Male" />
+            <MudToggleItem Value="@((Sex?)Sex.Female)" Text="Female" />
+        </MudToggleGroup>
+        <MudText Typo="Typo.caption" Color="Color.Error"><ValidationMessage For="@(() => Model.Sex)" /></MudText>
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudNumericField @bind-Value="Model.Age" For="@(() => Model.Age)" Label="Age" Variant="Variant.Outlined" Min="13" Max="90" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudNumericField @bind-Value="Model.HeightCm" For="@(() => Model.HeightCm)" Label="Height" Variant="Variant.Outlined"
+                         Min="120m" Max="230m" Adornment="Adornment.End" AdornmentText="cm" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudNumericField @bind-Value="Model.WeightKg" For="@(() => Model.WeightKg)" Label="Weight" Variant="Variant.Outlined"
+                         Min="30m" Max="300m" Step="0.5m" Adornment="Adornment.End" AdornmentText="kg" />
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired] public SaveProfileRequest Model { get; set; } = default!;
+    [Parameter] public bool AutoFocus { get; set; }
+}

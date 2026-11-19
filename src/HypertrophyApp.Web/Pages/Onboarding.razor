@@ -1,0 +1,104 @@
+@page "/start"
+@layout RootLayout
+@inject HypertrophyAppApiClient Api
+@inject AppState State
+@inject ThemeState ThemeState
+@inject NavigationManager Nav
+
+<PageTitle>Get started · HypertrophyApp</PageTitle>
+
+<div class="onboarding-shell">
+    <div class="onboarding-card">
+        <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.Center" Class="mb-1" Style="position:relative;">
+            <span class="brand" style="color:#fff; font-size:2rem;">
+                <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Primary" Size="Size.Large" /> HypertrophyApp
+            </span>
+            <MudIconButton Icon="@(ThemeState.IsDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           OnClick="ThemeState.ToggleAsync" aria-label="Toggle dark mode" Style="position:absolute; right:0; color:#fff;" />
+        </MudStack>
+        <MudText Align="Align.Center" Class="mb-6" Style="color:rgba(255,255,255,.7);">No e-mail, no password, no tracking. Just your plan.</MudText>
+
+        <div class="card">
+            <MudStack Row AlignItems="AlignItems.Center" Class="mb-6">
+                <MudProgressLinear Color="Color.Primary" Value="@(_step * 50)" Rounded Size="Size.Medium" />
+                <MudText Typo="Typo.caption" Style="white-space:nowrap;">Step @_step of 2</MudText>
+            </MudStack>
+
+            <MudText Typo="Typo.h5" Style="font-weight:800;">@(_step == 1 ? "Tell us about yourself" : "Build your program")</MudText>
+            <MudText Typo="Typo.body2" Class="muted mb-6">
+                @(_step == 1 ? "We only use this to estimate your calorie needs."
+                             : "Pick how often you can train – we pre-select the split research supports best.")
+            </MudText>
+
+            <EditForm EditContext="_editContext" OnSubmit="HandleSubmitAsync">
+                <DataAnnotationsValidator />
+
+                @if (_step == 1)
+                {
+                    <BodyFields Model="_model" AutoFocus />
+                    <MudStack Row Justify="Justify.FlexEnd" Class="mt-8">
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                                   EndIcon="@Icons.Material.Filled.ArrowForward">Continue</MudButton>
+                    </MudStack>
+                }
+                else
+                {
+                    <ProgramPicker Model="_model" OnChanged="StateHasChanged" />
+
+                    @if (_error is not null)
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-6">@_error</MudAlert>
+                    }
+
+                    <MudStack Row Justify="Justify.SpaceBetween" Class="mt-8">
+                        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="() => _step = 1">Back</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                                   Disabled="@(_submitting || string.IsNullOrEmpty(_model.SplitId))">
+                            Create my plan
+                        </MudButton>
+                    </MudStack>
+                }
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly SaveProfileRequest _model = new();
+    private EditContext _editContext = default!;
+    private int _step = 1;
+    private bool _submitting;
+    private string? _error;
+
+    protected override void OnInitialized() => _editContext = new EditContext(_model);
+
+    private async Task HandleSubmitAsync()
+    {
+        _editContext.Validate();
+
+        if (_step == 1)
+        {
+            // Only the step-1 fields must be valid to continue; the split is chosen on step 2.
+            string[] step1 = [nameof(_model.Name), nameof(_model.Sex), nameof(_model.Age), nameof(_model.HeightCm), nameof(_model.WeightKg)];
+            if (step1.All(f => !_editContext.GetValidationMessages(new FieldIdentifier(_model, f)).Any()))
+                _step = 2;
+            return;
+        }
+
+        if (_editContext.GetValidationMessages().Any()) return;
+
+        _submitting = true;
+        _error = null;
+        var result = await Api.CreateProfileAsync(_model);
+        _submitting = false;
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        await State.UseProfileAsync(result.Value!.Id);
+        Nav.NavigateTo("/");
+    }
+}

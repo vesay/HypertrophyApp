@@ -1,0 +1,28 @@
+@inject IDialogService Dialogs
+
+@* Planned workout: each exercise with its form demo; click to see how to perform it. *@
+@foreach (var ex in Workout.Exercises)
+{
+    <div class="food-row" style="cursor:@(ex.ExerciseId is null ? "default" : "pointer");" @onclick="() => ShowAsync(ex)">
+        <ExerciseAnimation ImageUrls="ex.ImageUrls" Alt="@ex.Name" Size="48" />
+        <div style="flex:1; min-width:0;">
+            <div style="font-weight:600;">@ex.Name</div>
+            <div class="stat-sub">Rest @FormatRest(ex.RestSeconds)</div>
+        </div>
+        <span class="pill accent">@ex.Sets × @ex.Reps</span>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public WorkoutDayDto Workout { get; set; } = default!;
+
+    private async Task ShowAsync(ExerciseDto ex)
+    {
+        if (ex.ExerciseId is { } id) await ExerciseDialog.ShowAsync(Dialogs, id);
+    }
+
+    public static string FormatRest(int seconds) =>
+        seconds == 0 ? "–" :
+        seconds % 60 == 0 ? $"{seconds / 60} min" :
+        seconds > 60 ? $"{seconds / 60}:{seconds % 60:00} min" : $"{seconds} s";
+}

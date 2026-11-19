@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HypertrophyApp.Api/HypertrophyApp.Api.csproj" />
+    <Project Path="src/HypertrophyApp.Application/HypertrophyApp.Application.csproj" />
+    <Project Path="src/HypertrophyApp.Domain/HypertrophyApp.Domain.csproj" />
+    <Project Path="src/HypertrophyApp.Infrastructure/HypertrophyApp.Infrastructure.csproj" />
+    <Project Path="src/HypertrophyApp.Shared/HypertrophyApp.Shared.csproj" />
+    <Project Path="src/HypertrophyApp.Web/HypertrophyApp.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HypertrophyApp.IntegrationTests/HypertrophyApp.IntegrationTests.csproj" />
+    <Project Path="tests/HypertrophyApp.UnitTests/HypertrophyApp.UnitTests.csproj" />
+  </Folder>
+</Solution>

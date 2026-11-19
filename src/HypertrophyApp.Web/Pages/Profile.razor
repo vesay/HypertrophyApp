@@ -1,0 +1,136 @@
+@page "/profile"
+@inject AppState State
+@inject HypertrophyAppApiClient Api
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>Profile · HypertrophyApp</PageTitle>
+
+@if (State.Dashboard is not { } d || _model is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else
+{
+    var p = d.Profile;
+
+    <div class="hero">
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+            <span class="avatar" style="width:64px;height:64px;font-size:1.6rem;">@p.Name[..1].ToUpperInvariant()</span>
+            <div>
+                <MudText Typo="Typo.h4" Style="font-weight:800;">@p.Name</MudText>
+                <MudText Class="hero-sub">Member since @p.CreatedAtUtc.ToLocalTime().ToString("MMMM yyyy")</MudText>
+            </div>
+        </MudStack>
+    </div>
+
+    @* ---------- Overview ---------- *@
+    <MudGrid Spacing="3" Class="mb-2">
+        @foreach (var (label, value, sub) in Overview(d))
+        {
+            <MudItem xs="6" sm="4" md="2">
+                <div class="card">
+                    <div class="stat-label">@label</div>
+                    <div class="stat-value" style="font-size:1.25rem;">@value</div>
+                    <div class="stat-sub">@sub</div>
+                </div>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @* ---------- Edit ---------- *@
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <DataAnnotationsValidator />
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="5">
+                <div class="card">
+                    <MudText Class="card-title mb-4">Personal details</MudText>
+                    <BodyFields Model="_model" />
+                </div>
+            </MudItem>
+            <MudItem xs="12" md="7">
+                <div class="card">
+                    <MudText Class="card-title mb-4">Program & goal</MudText>
+                    <ProgramPicker Model="_model" HasCustomProgram="p.HasCustomProgram" OnChanged="StateHasChanged" />
+                    <MudButton Href="/program/builder" Variant="Variant.Text" Color="Color.Primary" Class="mt-3 ml-n2"
+                               StartIcon="@Icons.Material.Rounded.Edit">
+                        @(p.HasCustomProgram ? "Edit my own workout" : "Create your own workout")
+                    </MudButton>
+                </div>
+            </MudItem>
+        </MudGrid>
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-4" Wrap="Wrap.Wrap" Spacing="2">
+            <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Rounded.DeleteForever" OnClick="DeleteAsync">
+                Delete all my data
+            </MudButton>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                       DropShadow="false" Disabled="_saving" StartIcon="@Icons.Material.Rounded.Check">Save changes</MudButton>
+        </MudStack>
+    </EditForm>
+}
+
+@code {
+    private SaveProfileRequest? _model;
+    private bool _saving;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await State.EnsureLoadedAsync())
+            _model = SaveProfileRequest.From(State.Dashboard!.Profile);
+    }
+
+    private static IEnumerable<(string Label, string Value, string Sub)> Overview(DashboardDto d)
+    {
+        var p = d.Profile;
+        yield return ("Sex", p.Sex.ToString(), $"{p.Age} years");
+        yield return ("Height", $"{p.HeightCm:0.#} cm", "");
+        yield return ("Weight", $"{p.WeightKg:0.#} kg", "");
+        yield return ("BMI", p.Bmi.ToString("0.0"), p.BmiCategory);
+        yield return ("Program", d.Split.Name, $"{p.DaysPerWeek} {(p.DaysPerWeek == 1 ? "day" : "days")} / week");
+        yield return ("Daily target", $"{d.Nutrition.TargetCalories:N0}", p.Goal switch
+        {
+            Goal.LoseFat => "kcal · lose fat",
+            Goal.BuildMuscle => "kcal · build muscle",
+            _ => "kcal · stay fit"
+        });
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        var result = await Api.UpdateProfileAsync(State.ProfileId, _model!);
+        _saving = false;
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        await State.RefreshAsync();
+        _model = SaveProfileRequest.From(State.Dashboard!.Profile);
+        Snackbar.Add("Profile saved. Your plan has been updated.", Severity.Success);
+    }
+
+    private async Task DeleteAsync()
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Delete all data?",
+            "This permanently deletes your profile, workout log and food diary. This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true) return;
+
+        await Api.DeleteProfileAsync(State.ProfileId);
+        await State.ForgetProfileAsync();
+        Nav.NavigateTo("/start");
+    }
+}

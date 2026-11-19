@@ -1,0 +1,119 @@
+﻿@page "/"
+@inject AppState State
+@inject HypertrophyAppApiClient Api
+
+<PageTitle>Today · HypertrophyApp</PageTitle>
+
+@if (State.Dashboard is not { } d)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else
+{
+    var p = d.Profile;
+    var n = d.Nutrition;
+
+    @* ---------- Hero ---------- *@
+    <div class="hero">
+        <MudText Typo="Typo.h4" Style="font-weight:800;">Hi, @p.Name 👋</MudText>
+        <MudText Class="hero-sub mb-4">
+            @DateTime.Today.ToString("dddd, MMMM d") · Your <b>@d.Split.Name</b> program · Goal: <b>@GoalText(p.Goal)</b>
+        </MudText>
+        <MudStack Row Wrap="Wrap.Wrap" Spacing="2">
+            <span class="chip-light">🏋️ @(_today?.Workout?.Title ?? "Rest day")</span>
+            <span class="chip-light">🔥 @_eatenToday.ToString("N0") / @n.TargetCalories.ToString("N0") kcal</span>
+            <span class="chip-light">📅 @_workoutsThisWeek / @p.DaysPerWeek workouts this week</span>
+        </MudStack>
+    </div>
+
+    <MudGrid Spacing="3">
+        @* ---------- Workout logger ---------- *@
+        <MudItem xs="12" md="8">
+            <div class="card">
+                <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-2" Spacing="2">
+                    <div>
+                        <MudText Class="card-title">@(_today?.Workout is null ? "Rest day – log anyway?" : "Today's workout")</MudText>
+                        <MudText Typo="Typo.body2" Class="muted">Tap an exercise to see how to do it.</MudText>
+                    </div>
+                    @if (_workouts.Count > 1)
+                    {
+                        <MudSelect T="string" @bind-Value="_selectedTitle" Variant="Variant.Outlined" Margin="Margin.Dense" Dense Style="min-width:180px;">
+                            @foreach (var w in _workouts)
+                            {
+                                <MudSelectItem Value="@w.Title">@w.Title</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                </MudStack>
+
+                @if (_workouts.FirstOrDefault(w => w.Title == _selectedTitle) is { } selected)
+                {
+                    <WorkoutLogger Workout="selected" Date="AppState.Today" OnSaved="LoadWeekAsync" />
+                }
+            </div>
+        </MudItem>
+
+        @* ---------- Nutrition today ---------- *@
+        <MudItem xs="12" md="4">
+            <div class="card">
+                <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Class="card-title">Nutrition today</MudText>
+                    <MudButton Href="/nutrition" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary">Add food</MudButton>
+                </MudStack>
+                <div class="big-number">@_eatenToday.ToString("N0")</div>
+                <MudText Typo="Typo.body2" Class="muted mb-4">of @n.TargetCalories.ToString("N0") kcal · @RemainingText(n.TargetCalories - _eatenToday)</MudText>
+                <MacroBar Label="Protein" Value="_foods.Sum(f => f.ProteinGrams ?? 0)" Target="n.ProteinGrams" Color="Color.Primary" />
+                <MacroBar Label="Carbs" Value="_foods.Sum(f => f.CarbGrams ?? 0)" Target="n.CarbGrams" Color="Color.Info" />
+                <MacroBar Label="Fat" Value="_foods.Sum(f => f.FatGrams ?? 0)" Target="n.FatGrams" Color="Color.Warning" />
+                <MudDivider Class="my-3" />
+                <MudStack Row Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.body2">💧 Water</MudText>
+                    <MudText Typo="Typo.body2" Style="font-weight:700;">@n.WaterLiters.ToString("0.0") L</MudText>
+                </MudStack>
+            </div>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private ScheduleDayDto? _today;
+    private List<WorkoutDayDto> _workouts = [];
+    private string? _selectedTitle;
+    private IReadOnlyList<FoodEntryDto> _foods = [];
+    private int _workoutsThisWeek;
+
+    private int _eatenToday => _foods.Sum(f => f.Calories);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await State.EnsureLoadedAsync()) return;
+
+        var week = State.Dashboard!.WeeklySchedule;
+        _today = week.FirstOrDefault(x => x.DayOfWeek == DateTime.Today.DayOfWeek.ToString());
+        _workouts = week.Where(x => x.Workout is not null).Select(x => x.Workout!).DistinctBy(w => w.Title).ToList();
+
+        // Default to today's workout, or the next one on a rest day.
+        var todayIndex = week.ToList().IndexOf(_today!);
+        _selectedTitle = Enumerable.Range(0, 7).Select(o => week[(todayIndex + o) % 7].Workout).FirstOrDefault(w => w is not null)?.Title;
+
+        await Task.WhenAll(LoadFoodsAsync(), LoadWeekAsync());
+    }
+
+    private async Task LoadFoodsAsync() => _foods = await Api.GetFoodsAsync(State.ProfileId, AppState.Today);
+
+    private async Task LoadWeekAsync()
+    {
+        var monday = AppState.Today.AddDays(-(((int)AppState.Today.DayOfWeek + 6) % 7));
+        _workoutsThisWeek = (await Api.GetHistoryAsync(State.ProfileId, 7)).Count(s => s.Date >= monday);
+    }
+
+    private static string RemainingText(int remaining) =>
+        remaining >= 0 ? $"{remaining:N0} kcal left" : $"{-remaining:N0} kcal over";
+
+    private static string GoalText(Goal goal) => goal switch
+    {
+        Goal.LoseFat => "Lose fat",
+        Goal.BuildMuscle => "Build muscle",
+        _ => "Stay fit"
+    };
+}

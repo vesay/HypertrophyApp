@@ -1,0 +1,177 @@
+@inject HypertrophyAppApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+@* Deliberately simple: one weight per exercise and one box per set for the reps. *@
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-6" />
+}
+else
+{
+    @foreach (var ex in _exercises)
+    {
+        <div class="log-row">
+            <div style="cursor:@(ex.ExerciseId is null ? "default" : "pointer");" @onclick="() => ShowFormAsync(ex)">
+                <ExerciseAnimation ImageUrls="ex.ImageUrls" Alt="@ex.Name" Size="64" />
+            </div>
+            <div class="log-body">
+                <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                    <span class="log-name" @onclick="() => ShowFormAsync(ex)">@ex.Name</span>
+                    <span class="pill">@ex.Target</span>
+                    @if (ex.Sets.All(s => s.Reps is > 0))
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                    }
+                </MudStack>
+            </div>
+            <div class="log-inputs">
+                <div class="input-group">
+                    <span class="input-label">kg</span>
+                    <input type="number" inputmode="decimal" min="0" max="1000" step="0.5" placeholder="–"
+                           class="num-input kg @(ex.WeightKg is > 0 ? "filled" : "")" aria-label="@($"{ex.Name} weight in kg")"
+                           @bind="ex.WeightKg" @bind:event="oninput" />
+                </div>
+                <div class="input-group">
+                    <span class="input-label">Reps</span>
+                    @for (var i = 0; i < ex.Sets.Count; i++)
+                    {
+                        var set = ex.Sets[i];
+                        <input type="number" inputmode="numeric" min="0" max="1000" placeholder="@(i + 1)"
+                               class="num-input @(set.Reps is > 0 ? "filled" : "")" aria-label="@($"{ex.Name} set {i + 1} reps")"
+                               @bind="set.Reps" @bind:event="oninput" />
+                    }
+                    <button type="button" class="set-btn" title="Remove last set" aria-label="Remove set"
+                            disabled="@(ex.Sets.Count <= 1)" @onclick="() => ex.Sets.RemoveAt(ex.Sets.Count - 1)">
+                        <MudIcon Icon="@Icons.Material.Filled.Remove" Size="Size.Small" />
+                    </button>
+                    <button type="button" class="set-btn" title="Add a set" aria-label="Add set"
+                            disabled="@(ex.Sets.Count >= 10)" @onclick="() => ex.Sets.Add(new SetSlot())">
+                        <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" />
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-4" Wrap="Wrap.Wrap" Spacing="2">
+        <MudText Typo="Typo.body2" Class="muted">
+            @(_savedSets > 0 ? $"✓ Saved · {_savedSets} sets logged today" : "Type your reps for each set, then save.")
+        </MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Check"
+                   OnClick="SaveAsync" Disabled="_saving">Save workout</MudButton>
+    </MudStack>
+}
+
+@code {
+    private sealed class SetSlot { public int? Reps { get; set; } }
+
+    private sealed class ExerciseLog
+    {
+        public required string Name { get; init; }
+        public required string Target { get; init; }
+        public string? ExerciseId { get; init; }
+        public IReadOnlyList<string>? ImageUrls { get; init; }
+        public decimal? WeightKg { get; set; }
+        public List<SetSlot> Sets { get; init; } = [];
+    }
+
+    [Parameter, EditorRequired] public WorkoutDayDto Workout { get; set; } = default!;
+    [Parameter, EditorRequired] public DateOnly Date { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private List<ExerciseLog> _exercises = [];
+    private (string Title, DateOnly Date)? _loadedFor;
+    private bool _loading = true, _saving;
+    private string? _error;
+    private int _savedSets;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == (Workout.Title, Date)) return;
+        _loadedFor = (Workout.Title, Date);
+        _loading = true;
+        _error = null;
+
+        var logged = (await Api.GetSessionAsync(State.ProfileId, Date))?.Sets ?? [];
+        _savedSets = logged.Count;
+
+        // Planned exercises, prefilled with anything already logged today.
+        _exercises = Workout.Exercises.Select(e =>
+        {
+            var done = logged.Where(s => Same(s.ExerciseName, e.Name)).OrderBy(s => s.SetNumber).ToList();
+            var setCount = Math.Max(e.Sets, done.Count);
+            return new ExerciseLog
+            {
+                Name = e.Name, Target = $"{e.Sets} × {e.Reps}", ExerciseId = e.ExerciseId, ImageUrls = e.ImageUrls,
+                WeightKg = Trim(done.FirstOrDefault(s => s.WeightKg is not null)?.WeightKg),
+                Sets = Enumerable.Range(0, setCount).Select(i => new SetSlot { Reps = i < done.Count ? done[i].Reps : null }).ToList()
+            };
+        }).ToList();
+
+        // Keep anything logged today that isn't part of this workout, so nothing gets lost on save.
+        foreach (var group in logged.Where(s => !Workout.Exercises.Any(e => Same(e.Name, s.ExerciseName))).GroupBy(s => s.ExerciseName))
+            _exercises.Add(new ExerciseLog
+            {
+                Name = group.Key, Target = "logged earlier",
+                WeightKg = Trim(group.FirstOrDefault(s => s.WeightKg is not null)?.WeightKg),
+                Sets = group.OrderBy(s => s.SetNumber).Select(s => new SetSlot { Reps = s.Reps }).ToList()
+            });
+
+        _loading = false;
+    }
+
+    private async Task ShowFormAsync(ExerciseLog ex)
+    {
+        if (ex.ExerciseId is { } id) await ExerciseDialog.ShowAsync(Dialogs, id);
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        var sets = _exercises
+            .SelectMany(e => e.Sets
+                .Select((s, i) => (s.Reps, Number: i + 1))
+                .Where(s => s.Reps is > 0)
+                .Select(s => new SetLogDto(e.Name, s.Number, s.Reps!.Value, e.WeightKg is > 0 ? e.WeightKg : null)))
+            .ToList();
+
+        _saving = true;
+        try
+        {
+            if (sets.Count == 0)
+            {
+                await Api.DeleteSessionAsync(State.ProfileId, Date);
+                _savedSets = 0;
+                Snackbar.Add("Nothing to save yet – enter the reps of at least one set.", Severity.Info);
+                return;
+            }
+
+            var result = await Api.SaveSessionAsync(State.ProfileId, Date, new SaveWorkoutSessionRequest(Workout.Title, sets));
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _savedSets = sets.Count;
+            Snackbar.Add($"Workout saved – {sets.Count} sets logged. 💪", Severity.Success);
+            await OnSaved.InvokeAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>The database returns 60.00 – drop trailing zeros so the box shows "60".</summary>
+    private static decimal? Trim(decimal? value) => value / 1.000000000000000000000000000000000m;
+
+    private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+}

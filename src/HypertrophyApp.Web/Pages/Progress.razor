@@ -1,0 +1,187 @@
+@page "/progress"
+@inject AppState State
+@inject HypertrophyAppApiClient Api
+
+<PageTitle>Progress · HypertrophyApp</PageTitle>
+
+<div class="hero">
+    <MudText Typo="Typo.h4" Style="font-weight:800;">Progress 📈</MudText>
+    <MudText Class="hero-sub">See how your lifts improve over time.</MudText>
+</div>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else if (_exercises.Count == 0)
+{
+    <div class="card" style="text-align:center; padding:48px 20px;">
+        <MudIcon Icon="@Icons.Material.Rounded.ShowChart" Size="Size.Large" Class="muted" />
+        <MudText Class="card-title mt-2">No workouts logged yet</MudText>
+        <MudText Class="muted mb-4">Log the reps and weight of your sets on the Today page – your progress will appear here.</MudText>
+        <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary" DropShadow="false">Log today's workout</MudButton>
+    </div>
+}
+else
+{
+    <MudStack Row Spacing="3" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudSelect T="string" Value="_exercise" ValueChanged="SelectExerciseAsync" Label="Exercise" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Dense Style="min-width:260px;">
+            @foreach (var e in _exercises)
+            {
+                <MudSelectItem Value="@e">@e</MudSelectItem>
+            }
+        </MudSelect>
+        <MudToggleGroup T="Metric" @bind-Value="_metric" Color="Color.Primary" Outlined Size="Size.Small">
+            @foreach (var m in AvailableMetrics)
+            {
+                <MudToggleItem Value="m" Text="@Label(m)" />
+            }
+        </MudToggleGroup>
+    </MudStack>
+
+    @if (_progress is { Points.Count: > 0 } p)
+    {
+        var points = Series(p);
+        <MudGrid Spacing="3" Class="mb-1">
+            <MudItem xs="6" md="3">
+                <div class="card">
+                    <div class="stat-label">Latest</div>
+                    <div class="stat-value">@points[^1].Value.ToString("0.#") <span class="stat-sub">@Unit</span></div>
+                    <div class="stat-sub">@points[^1].Date.ToString("MMM d")</div>
+                </div>
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <div class="card">
+                    <div class="stat-label">Best</div>
+                    <div class="stat-value">@points.Max(x => x.Value).ToString("0.#") <span class="stat-sub">@Unit</span></div>
+                    <div class="stat-sub">Personal record</div>
+                </div>
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <div class="card">
+                    <div class="stat-label">Change</div>
+                    <div class="stat-value">@ChangeText(points)</div>
+                    <div class="stat-sub">since @points[0].Date.ToString("MMM d")</div>
+                </div>
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <div class="card">
+                    <div class="stat-label">Sessions</div>
+                    <div class="stat-value">@points.Count</div>
+                    <div class="stat-sub">with this exercise</div>
+                </div>
+            </MudItem>
+        </MudGrid>
+
+        <div class="card mb-4" style="height:auto;">
+            <MudText Class="card-title mb-3">@p.ExerciseName · @Label(_metric) (@Unit)</MudText>
+            <LineChart Points="points" Unit="@Unit" AriaLabel="@($"{p.ExerciseName} {Label(_metric)} over time")" />
+        </div>
+
+        <div class="card mb-6" style="height:auto;">
+            <MudText Class="card-title mb-2">Session details</MudText>
+            <MudSimpleTable Dense Elevation="0" Style="background:transparent;">
+                <thead>
+                    <tr><th>Date</th><th style="text-align:right;">Best weight</th><th style="text-align:right;">Best reps</th>
+                        <th style="text-align:right;">Total reps</th><th style="text-align:right;">Volume</th><th style="text-align:right;">Est. 1RM</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var pt in p.Points.Reverse())
+                    {
+                        <tr>
+                            <td style="white-space:nowrap;">@pt.Date.ToString("MMM d, yyyy")</td>
+                            <td style="text-align:right;">@(pt.BestWeightKg is { } w ? $"{w:0.#} kg" : "–")</td>
+                            <td style="text-align:right;">@pt.BestReps</td>
+                            <td style="text-align:right;">@pt.TotalReps</td>
+                            <td style="text-align:right;">@(pt.VolumeKg > 0 ? $"{pt.VolumeKg:N0} kg" : "–")</td>
+                            <td style="text-align:right;">@(pt.Estimated1RmKg is { } e ? $"{e:0.#} kg" : "–")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </div>
+    }
+
+    <MudText Class="card-title mb-2">Recent workouts</MudText>
+    <div class="card" style="height:auto;">
+        @foreach (var s in _history)
+        {
+            <div class="food-row">
+                <div style="width:90px; white-space:nowrap;" class="muted">@s.Date.ToString("MMM d")</div>
+                <div style="flex:1; font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@s.Title</div>
+                <span class="pill d-none d-sm-inline-flex">@s.Exercises @(s.Exercises == 1 ? "exercise" : "exercises")</span>
+                <span class="pill">@s.TotalSets sets</span>
+                <span class="pill d-none d-sm-inline-flex">@s.TotalReps reps</span>
+                @if (s.TotalVolumeKg > 0)
+                {
+                    <span class="pill d-none d-sm-inline-flex">@s.TotalVolumeKg.ToString("N0") kg</span>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private enum Metric { OneRepMax, Weight, Reps, Volume }
+
+    private bool _loading = true;
+    private IReadOnlyList<string> _exercises = [];
+    private IReadOnlyList<WorkoutSessionSummaryDto> _history = [];
+    private string? _exercise;
+    private ExerciseProgressDto? _progress;
+    private Metric _metric = Metric.OneRepMax;
+
+    private bool HasWeights => _progress?.Points.Any(p => p.BestWeightKg is > 0) == true;
+
+    private IEnumerable<Metric> AvailableMetrics =>
+        HasWeights ? [Metric.OneRepMax, Metric.Weight, Metric.Reps, Metric.Volume] : [Metric.Reps];
+
+    private string Unit => _metric == Metric.Reps ? "reps" : "kg";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await State.EnsureLoadedAsync()) return;
+
+        var exercisesTask = Api.GetLoggedExercisesAsync(State.ProfileId);
+        var historyTask = Api.GetHistoryAsync(State.ProfileId, 20);
+        _exercises = await exercisesTask;
+        _history = await historyTask;
+
+        if (_exercises.Count > 0) await SelectExerciseAsync(_exercises[0]);
+        _loading = false;
+    }
+
+    private async Task SelectExerciseAsync(string exercise)
+    {
+        _exercise = exercise;
+        _progress = await Api.GetProgressAsync(State.ProfileId, exercise);
+        if (!AvailableMetrics.Contains(_metric)) _metric = AvailableMetrics.First();
+    }
+
+    private List<LineChart.Point> Series(ExerciseProgressDto p) => p.Points
+        .Select(x => (x.Date, Value: _metric switch
+        {
+            Metric.OneRepMax => (double?)(x.Estimated1RmKg ?? x.BestWeightKg),
+            Metric.Weight => (double?)x.BestWeightKg,
+            Metric.Volume => (double)x.VolumeKg,
+            _ => x.BestReps
+        }))
+        .Where(x => x.Value is not null)
+        .Select(x => new LineChart.Point(x.Date, x.Value!.Value))
+        .ToList();
+
+    private string ChangeText(List<LineChart.Point> points)
+    {
+        var diff = points[^1].Value - points[0].Value;
+        return points.Count < 2 ? "–" : $"{(diff >= 0 ? "+" : "−")}{Math.Abs(diff):0.#} {Unit}";
+    }
+
+    private static string Label(Metric m) => m switch
+    {
+        Metric.OneRepMax => "Est. 1RM",
+        Metric.Weight => "Best weight",
+        Metric.Reps => "Best reps",
+        _ => "Volume"
+    };
+}

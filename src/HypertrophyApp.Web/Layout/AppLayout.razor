@@ -1,0 +1,83 @@
+@inherits LayoutComponentBase
+@layout RootLayout
+@implements IDisposable
+@inject AppState State
+@inject ThemeState ThemeState
+
+<MudLayout>
+    <MudAppBar Elevation="0" Class="app-bar">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       Class="d-md-none" OnClick="() => _drawerOpen = true" aria-label="Open menu" />
+        <a href="/" class="brand">
+            <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Primary" />
+            HypertrophyApp
+        </a>
+
+        <nav class="top-nav d-none d-md-flex">
+            @foreach (var (href, label, icon) in Links)
+            {
+                <NavLink href="@href" Match="@(href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)" class="top-nav-link">
+                    <MudIcon Icon="@icon" Size="Size.Small" /> @label
+                </NavLink>
+            }
+        </nav>
+
+        <MudSpacer />
+        <MudTooltip Text="@(ThemeState.IsDarkMode ? "Light mode" : "Dark mode")">
+            <MudIconButton Icon="@(ThemeState.IsDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit" OnClick="ThemeState.ToggleAsync" aria-label="Toggle dark mode" />
+        </MudTooltip>
+        @if (State.Dashboard is { } d)
+        {
+            <a href="/profile" class="avatar ml-2" title="Profile">@Initial(d.Profile.Name)</a>
+        }
+    </MudAppBar>
+
+    @* Mobile navigation *@
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Temporary" Elevation="2" Class="app-drawer">
+        <div class="pa-4"><span class="brand"><MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Primary" /> HypertrophyApp</span></div>
+        <MudNavMenu>
+            @foreach (var (href, label, icon) in Links)
+            {
+                <MudNavLink Href="@href" Match="@(href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)" Icon="@icon"
+                            OnClick="() => _drawerOpen = false">@label</MudNavLink>
+            }
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="page">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private static readonly (string Href, string Label, string Icon)[] Links =
+    [
+        ("/", "Today", Icons.Material.Filled.Today),
+        ("/program", "Program", Icons.Material.Filled.CalendarMonth),
+        ("/exercises", "Exercises", Icons.Material.Filled.SportsGymnastics),
+        ("/progress", "Progress", Icons.Material.Filled.ShowChart),
+        ("/nutrition", "Nutrition", Icons.Material.Filled.Restaurant),
+        ("/profile", "Profile", Icons.Material.Filled.Person),
+    ];
+
+    private bool _drawerOpen;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        ThemeState.Changed += OnChanged;
+    }
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        ThemeState.Changed -= OnChanged;
+    }
+}

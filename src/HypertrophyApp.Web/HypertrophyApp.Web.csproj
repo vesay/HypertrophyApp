@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The client is hosted by HypertrophyApp.Api, which serves index.html as-is (no placeholder rewriting),
+         so framework files keep stable names. Caching is still validated via ETags. -->
+    <WasmFingerprintAssets>false</WasmFingerprintAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" PrivateAssets="all" />
+    <PackageReference Include="MudBlazor" Version="9.13.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HypertrophyApp.Shared\HypertrophyApp.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,243 @@
+@page "/program/builder"
+@inject AppState State
+@inject HypertrophyAppApiClient Api
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>Create your workout · HypertrophyApp</PageTitle>
+
+<div class="page-header">
+    <MudButton Href="/program" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" Class="mb-2 ml-n2">Program</MudButton>
+    <MudText Typo="Typo.h4" Class="page-title">Create your own workout</MudText>
+    <MudText Class="muted">Pick your training days and add the exercises you want. Keep at least one rest day.</MudText>
+</div>
+
+@if (_days is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-8" />
+}
+else
+{
+    <MudStack Row Spacing="2" Class="mb-4" Wrap="Wrap.Wrap">
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Rounded.ContentCopy" OnClick="CopyCurrentProgram">
+            Start from current program
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Rounded.ClearAll" OnClick="ClearAll">
+            Start empty
+        </MudButton>
+    </MudStack>
+
+    <MudStack Spacing="3">
+        @foreach (var day in _days)
+        {
+            <div class="card" style="height:auto;">
+                <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap" Spacing="2">
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <span class="week-day">@day.Day</span>
+                        <MudSwitch T="bool" Value="day.IsTraining" ValueChanged="v => SetTraining(day, v)" Color="Color.Primary"
+                                   Label="@(day.IsTraining ? "Training" : "Rest")" />
+                    </MudStack>
+                    @if (day.IsTraining)
+                    {
+                        <MudTextField @bind-Value="day.Title" Label="Workout name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      MaxLength="60" Style="min-width:220px;" />
+                    }
+                </MudStack>
+
+                @if (day.IsTraining)
+                {
+                    <div class="mt-3">
+                        @foreach (var ex in day.Exercises)
+                        {
+                            <MudGrid Spacing="2" Class="mb-2" Style="align-items:center;">
+                                <MudItem xs="12" sm="5">
+                                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                        <div style="cursor:pointer;" title="Pick from library" @onclick="() => PickIntoAsync(ex)">
+                                            <ExerciseAnimation ImageUrls="ex.ImageUrls" Alt="@ex.Name" Size="48" />
+                                        </div>
+                                        @if (ex.ExerciseId is not null)
+                                        {
+                                            <div style="flex:1; min-width:0;">
+                                                <div style="font-weight:700;">@ex.Name</div>
+                                                <MudLink Typo="Typo.caption" OnClick="() => PickIntoAsync(ex)">Change</MudLink>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <MudAutocomplete T="string" @bind-Value="ex.Name" SearchFunc="SearchExercises" Label="Exercise"
+                                                             Variant="Variant.Outlined" Margin="Margin.Dense" CoerceValue CoerceText="false"
+                                                             MaxItems="8" ResetValueOnEmptyText="false" Style="flex:1;" />
+                                        }
+                                    </MudStack>
+                                </MudItem>
+                                <MudItem xs="3" sm="2">
+                                    <MudNumericField @bind-Value="ex.Sets" Label="Sets" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="10" />
+                                </MudItem>
+                                <MudItem xs="4" sm="2">
+                                    <MudTextField @bind-Value="ex.Reps" Label="Reps" Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" />
+                                </MudItem>
+                                <MudItem xs="3" sm="2">
+                                    <MudNumericField @bind-Value="ex.RestSeconds" Label="Rest (s)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Min="0" Max="600" Step="15" />
+                                </MudItem>
+                                <MudItem xs="2" sm="1">
+                                    <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline" Size="Size.Small" aria-label="Remove exercise"
+                                                   OnClick="() => day.Exercises.Remove(ex)" />
+                                </MudItem>
+                            </MudGrid>
+                        }
+                        <MudStack Row Spacing="1" Class="mt-1">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                       OnClick="() => AddFromLibraryAsync(day)" Disabled="@(day.Exercises.Count >= 15)">
+                                Add from library
+                            </MudButton>
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => day.Exercises.Add(new ExerciseModel())"
+                                       Disabled="@(day.Exercises.Count >= 15)">
+                                Custom exercise
+                            </MudButton>
+                        </MudStack>
+                    </div>
+                }
+            </div>
+        }
+    </MudStack>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+    }
+
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-6" Wrap="Wrap.Wrap" Spacing="2">
+        <MudText Class="muted">@TrainingDays @(TrainingDays == 1 ? "training day" : "training days") · @(7 - TrainingDays) rest</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" DropShadow="false"
+                   StartIcon="@Icons.Material.Rounded.Check" OnClick="SaveAsync" Disabled="_saving">
+            Save &amp; use this program
+        </MudButton>
+    </MudStack>
+}
+
+@code {
+    private sealed class ExerciseModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Sets { get; set; } = 3;
+        public string Reps { get; set; } = "8-12";
+        public int RestSeconds { get; set; } = 90;
+        public string? ExerciseId { get; set; }
+        public IReadOnlyList<string>? ImageUrls { get; set; }
+    }
+
+    private async Task AddFromLibraryAsync(DayModel day)
+    {
+        if (await ExerciseDialog.PickAsync(Dialogs) is not { } picked) return;
+        day.Exercises.Add(new ExerciseModel { Name = picked.Name, ExerciseId = picked.Id, ImageUrls = picked.ImageUrls });
+    }
+
+    private async Task PickIntoAsync(ExerciseModel ex)
+    {
+        if (await ExerciseDialog.PickAsync(Dialogs) is not { } picked) return;
+        ex.Name = picked.Name;
+        ex.ExerciseId = picked.Id;
+        ex.ImageUrls = picked.ImageUrls;
+    }
+
+    private sealed class DayModel
+    {
+        public required string Day { get; init; }
+        public bool IsTraining { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public List<ExerciseModel> Exercises { get; set; } = [];
+    }
+
+    private static readonly string[] Week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+    private static readonly string[] CommonExercises =
+    [
+        "Barbell Back Squat", "Front Squat", "Leg Press", "Bulgarian Split Squat", "Walking Lunge", "Leg Extension",
+        "Romanian Deadlift", "Conventional Deadlift", "Hip Thrust", "Lying Leg Curl", "Seated Leg Curl", "Standing Calf Raise",
+        "Barbell Bench Press", "Incline Dumbbell Press", "Dumbbell Bench Press", "Weighted Dip", "Push-Up", "Cable Fly", "Pec Deck",
+        "Overhead Press", "Seated Dumbbell Press", "Lateral Raise", "Reverse Pec Deck", "Face Pull", "Dumbbell Shrug",
+        "Pull-Up", "Chin-Up", "Lat Pulldown", "Barbell Row", "Dumbbell Row", "Seated Cable Row", "Straight-Arm Pulldown",
+        "Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Incline Dumbbell Curl", "Triceps Pushdown", "Skull Crusher",
+        "Overhead Triceps Extension", "Close-Grip Bench Press", "Plank", "Hanging Leg Raise", "Cable Crunch", "Ab Wheel Rollout",
+    ];
+
+    private List<DayModel>? _days;
+    private string[] _suggestions = CommonExercises;
+    private bool _saving;
+    private string? _error;
+
+    private int TrainingDays => _days?.Count(d => d.IsTraining) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await State.EnsureLoadedAsync()) return;
+
+        _suggestions = CommonExercises
+            .Concat(State.Dashboard!.WeeklySchedule.Where(d => d.Workout is not null).SelectMany(d => d.Workout!.Exercises.Select(e => e.Name)))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order().ToArray();
+
+        var saved = await Api.GetCustomProgramAsync(State.ProfileId);
+        if (saved.Count > 0)
+            _days = Week.Select(day => saved.FirstOrDefault(s => s.DayOfWeek == day) is { } s
+                ? new DayModel { Day = day, IsTraining = true, Title = s.Title, Exercises = s.Exercises.Select(ToModel).ToList() }
+                : new DayModel { Day = day }).ToList();
+        else
+            CopyCurrentProgram();
+    }
+
+    private void CopyCurrentProgram() =>
+        _days = State.Dashboard!.WeeklySchedule.Select(s => s.Workout is { } w
+            ? new DayModel { Day = s.DayOfWeek, IsTraining = true, Title = w.Title, Exercises = w.Exercises.Select(ToModel).ToList() }
+            : new DayModel { Day = s.DayOfWeek }).ToList();
+
+    private void ClearAll() => _days = Week.Select(day => new DayModel { Day = day }).ToList();
+
+    private static void SetTraining(DayModel day, bool training)
+    {
+        day.IsTraining = training;
+        if (training && day.Exercises.Count == 0)
+        {
+            day.Title = string.IsNullOrWhiteSpace(day.Title) ? $"{day.Day} workout" : day.Title;
+        }
+    }
+
+    private Task<IEnumerable<string>> SearchExercises(string value, CancellationToken _) =>
+        Task.FromResult(string.IsNullOrWhiteSpace(value)
+            ? _suggestions.AsEnumerable()
+            : _suggestions.Where(s => s.Contains(value, StringComparison.OrdinalIgnoreCase)));
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        var training = _days!.Where(d => d.IsTraining).ToList();
+        if (training.Count is 0 or 7)
+        {
+            _error = training.Count == 0 ? "Choose at least one training day." : "Keep at least one rest day.";
+            return;
+        }
+
+        var request = new SaveCustomProgramRequest(training.Select(d => new CustomDayDto(
+            d.Day, d.Title,
+            d.Exercises.Where(e => !string.IsNullOrWhiteSpace(e.Name))
+                       .Select(e => new ExerciseDto(e.Name, e.Sets, e.Reps, e.RestSeconds, e.ExerciseId)).ToList())).ToList());
+
+        _saving = true;
+        var result = await Api.SaveCustomProgramAsync(State.ProfileId, request);
+        _saving = false;
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        await State.RefreshAsync();
+        Snackbar.Add("Your program is saved and active.", Severity.Success);
+        Nav.NavigateTo("/program");
+    }
+
+    private static ExerciseModel ToModel(ExerciseDto e) =>
+        new() { Name = e.Name, Sets = e.Sets, Reps = e.Reps, RestSeconds = e.RestSeconds, ExerciseId = e.ExerciseId, ImageUrls = e.ImageUrls };
+}
